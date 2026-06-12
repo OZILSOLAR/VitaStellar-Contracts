@@ -1629,13 +1629,17 @@ impl IdentityRegistryContract {
     // ========================================================================
 
     /// Register an identity hash with metadata (legacy support)
-    pub fn register_identity_hash(env: Env, hash: BytesN<32>, subject: Address, meta: String) {
+    pub fn register_identity_hash(
+        env: Env,
+        hash: BytesN<32>,
+        subject: Address,
+        meta: String,
+    ) -> Result<(), Error> {
         subject.require_auth();
         Self::require_not_paused(&env)?;
 
-        if sanitize_string(&env, &meta, MAX_GENERAL_LEN).is_err() {
-            panic!("invalid meta");
-        }
+        sanitize_string(&env, &meta, MAX_GENERAL_LEN)
+            .map_err(Self::map_sanitization_error)?;
 
         let identity_record = IdentityRecord {
             hash: hash.clone(),
@@ -1649,17 +1653,24 @@ impl IdentityRegistryContract {
 
         env.events()
             .publish((symbol_short!("IdReg"),), (subject, hash, meta));
+
+        Ok(())
     }
 
     /// Create an attestation (legacy - only verifiers can do this)
-    pub fn attest(env: Env, verifier: Address, subject: Address, claim_hash: BytesN<32>) {
+    pub fn attest(
+        env: Env,
+        verifier: Address,
+        subject: Address,
+        claim_hash: BytesN<32>,
+    ) -> Result<(), Error> {
         verifier.require_auth();
         Self::require_not_paused(&env)?;
 
         let is_verifier = Self::is_verifier(env.clone(), verifier.clone());
 
         if !is_verifier {
-            panic!("Caller is not a verifier");
+            return Err(Error::NotVerifier);
         }
 
         let attestation = Attestation {
@@ -1689,6 +1700,8 @@ impl IdentityRegistryContract {
             (symbol_short!("Attested"),),
             (subject, verifier, claim_hash),
         );
+
+        Ok(())
     }
 
     /// Revoke an attestation (legacy)
@@ -1697,21 +1710,21 @@ impl IdentityRegistryContract {
         verifier: Address,
         subject: Address,
         claim_hash: BytesN<32>,
-    ) {
+    ) -> Result<(), Error> {
         verifier.require_auth();
         Self::require_not_paused(&env)?;
 
         let is_verifier = Self::is_verifier(env.clone(), verifier.clone());
 
         if !is_verifier {
-            panic!("Caller is not a verifier");
+            return Err(Error::NotVerifier);
         }
 
         let mut attestation: Attestation = env
             .storage()
             .instance()
             .get(&DataKey::Attestation(subject.clone(), claim_hash.clone()))
-            .unwrap_or_else(|| panic!("Attestation not found"));
+            .ok_or(Error::AttestationNotFound)?;
 
         attestation.is_active = false;
         env.storage().instance().set(
@@ -1721,6 +1734,8 @@ impl IdentityRegistryContract {
 
         env.events()
             .publish((symbol_short!("Revoked"),), (subject, verifier, claim_hash));
+
+        Ok(())
     }
 
     /// Get identity hash for a subject (legacy)
