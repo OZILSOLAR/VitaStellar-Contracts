@@ -183,7 +183,7 @@ impl CryptoRegistry {
             }
         };
 
-        let next_version = Self::next_version(&env, &owner);
+        let next_version = Self::next_version_or_default(&env, &owner);
         let bundle_id = Self::compute_bundle_id(
             &env,
             next_version,
@@ -257,11 +257,7 @@ impl CryptoRegistry {
 
     pub fn get_current_key_bundle(env: Env, owner: Address) -> Result<Option<KeyBundle>, Error> {
         Self::require_initialized(&env)?;
-        let v: u32 = env
-            .storage()
-            .persistent()
-            .get(&DataKey::CurrentVersion(owner.clone()))
-            .unwrap_or(0);
+        let v: u32 = Self::try_get_current_version_value(&env, &owner)?;
         if v == 0 {
             return Ok(None);
         }
@@ -292,13 +288,18 @@ impl CryptoRegistry {
         }
     }
 
-    fn next_version(env: &Env, owner: &Address) -> u32 {
-        let current: u32 = env
-            .storage()
+    fn try_get_current_version_value(env: &Env, owner: &Address) -> Result<u32, Error> {
+        env.storage()
             .persistent()
             .get(&DataKey::CurrentVersion(owner.clone()))
-            .unwrap_or(0);
-        current.saturating_add(1)
+            .ok_or(Error::KeyNotFound)
+    }
+
+    fn next_version_or_default(env: &Env, owner: &Address) -> u32 {
+        match env.storage().persistent().get::<DataKey, u32>(&DataKey::CurrentVersion(owner.clone())) {
+            Some(current) => current.saturating_add(1),
+            None => 1,
+        }
     }
 
     fn validate_public_key(key: &PublicKey) -> Result<(), Error> {
@@ -443,7 +444,7 @@ impl CryptoRegistry {
             .storage()
             .persistent()
             .get(&DataKey::CurrentVersion(owner.clone()))
-            .unwrap_or(0);
+            .ok_or(Error::KeyNotFound)?;
 
         // Revoke old key bundle if it exists
         if old_version > 0 {
@@ -485,7 +486,7 @@ impl CryptoRegistry {
             .storage()
             .persistent()
             .get(&DataKey::CurrentVersion(owner.clone()))
-            .unwrap_or(0);
+            .ok_or(Error::KeyNotFound)?;
 
         let mut versions = Vec::new(&env);
         for v in 1..=current {

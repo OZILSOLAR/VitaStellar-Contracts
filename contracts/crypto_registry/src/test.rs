@@ -72,6 +72,7 @@ fn revoke_bundle_marks_revoked() {
     let revoked = client.get_key_bundle(&alice, &v1).map(|b| b.revoked);
     assert_eq!(revoked, Some(true));
 }
+
 #[test]
 fn post_quantum_key_registration() {
     let env = Env::default();
@@ -137,4 +138,166 @@ fn invalid_pq_key_length() {
     };
 
     client.register_key_bundle(&alice, &enc_key, &kyber_key, &true, &empty, &false);
+}
+
+// ============================================================================
+// NEW TESTS FOR ERROR HANDLING
+// ============================================================================
+
+#[test]
+fn test_get_current_version_for_unregistered_owner() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _id) = register_contract(&env);
+    let admin = soroban_sdk::Address::generate(&env);
+    client.initialize(&admin);
+
+    let bob = soroban_sdk::Address::generate(&env);
+    
+    // bob has never registered a key bundle
+    let result = client.try_get_current_version(&bob);
+    assert_eq!(result, Err(Ok(Error::KeyNotFound)));
+}
+
+#[test]
+fn test_get_current_key_bundle_missing_entry() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _id) = register_contract(&env);
+    let admin = soroban_sdk::Address::generate(&env);
+    client.initialize(&admin);
+
+    let charlie = soroban_sdk::Address::generate(&env);
+    
+    // charlie has never registered a key bundle
+    let result = client.try_get_current_key_bundle(&charlie);
+    assert_eq!(result, Err(Ok(Error::KeyNotFound)));
+}
+
+#[test]
+fn test_get_all_versions_for_new_owner() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _id) = register_contract(&env);
+    let admin = soroban_sdk::Address::generate(&env);
+    client.initialize(&admin);
+
+    let dave = soroban_sdk::Address::generate(&env);
+    
+    // dave has never registered a key bundle
+    let result = client.try_get_all_key_versions(&dave);
+    assert_eq!(result, Err(Ok(Error::KeyNotFound)));
+}
+
+#[test]
+fn test_get_all_versions_for_registered_owner() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _id) = register_contract(&env);
+    let admin = soroban_sdk::Address::generate(&env);
+    client.initialize(&admin);
+
+    let eve = soroban_sdk::Address::generate(&env);
+    let enc_key = PublicKey {
+        algorithm: KeyAlgorithm::X25519,
+        key: Bytes::from_slice(&env, &[1u8; 32]),
+    };
+    let empty = PublicKey {
+        algorithm: KeyAlgorithm::Custom(0),
+        key: Bytes::new(&env),
+    };
+
+    // Register 3 key bundles
+    client.register_key_bundle(&eve, &enc_key, &empty, &false, &empty, &false);
+    let enc_key2 = PublicKey {
+        algorithm: KeyAlgorithm::X25519,
+        key: Bytes::from_slice(&env, &[2u8; 32]),
+    };
+    client.register_key_bundle(&eve, &enc_key2, &empty, &false, &empty, &false);
+    let enc_key3 = PublicKey {
+        algorithm: KeyAlgorithm::X25519,
+        key: Bytes::from_slice(&env, &[3u8; 32]),
+    };
+    client.register_key_bundle(&eve, &enc_key3, &empty, &false, &empty, &false);
+
+    let versions = client.get_all_key_versions(&eve);
+    assert_eq!(versions.len(), 3);
+    assert_eq!(versions.get(0), 1);
+    assert_eq!(versions.get(1), 2);
+    assert_eq!(versions.get(2), 3);
+}
+
+#[test]
+fn test_rotate_key_missing_current_version() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _id) = register_contract(&env);
+    let admin = soroban_sdk::Address::generate(&env);
+    client.initialize(&admin);
+
+    let frank = soroban_sdk::Address::generate(&env);
+    let enc_key = PublicKey {
+        algorithm: KeyAlgorithm::X25519,
+        key: Bytes::from_slice(&env, &[1u8; 32]),
+    };
+    let empty = PublicKey {
+        algorithm: KeyAlgorithm::Custom(0),
+        key: Bytes::new(&env),
+    };
+
+    // frank has never registered a key bundle, so rotate_key should fail
+    let result = client.try_rotate_key(&frank, &enc_key, &empty, &false, &empty, &false);
+    assert_eq!(result, Err(Ok(Error::KeyNotFound)));
+}
+
+#[test]
+fn test_rotate_key_successful() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _id) = register_contract(&env);
+    let admin = soroban_sdk::Address::generate(&env);
+    client.initialize(&admin);
+
+    let grace = soroban_sdk::Address::generate(&env);
+    let enc_key = PublicKey {
+        algorithm: KeyAlgorithm::X25519,
+        key: Bytes::from_slice(&env, &[1u8; 32]),
+    };
+    let empty = PublicKey {
+        algorithm: KeyAlgorithm::Custom(0),
+        key: Bytes::new(&env),
+    };
+
+    // Register initial key
+    let v1 = client.register_key_bundle(&grace, &enc_key, &empty, &false, &empty, &false);
+    assert_eq!(v1, 1);
+    
+    // Verify v1 is not revoked
+    let bundle_v1 = client.get_key_bundle(&grace, &v1).unwrap();
+    assert_eq!(bundle_v1.revoked, false);
+
+    // Rotate to new key
+    let enc_key2 = PublicKey {
+        algorithm: KeyAlgorithm::X25519,
+        key: Bytes::from_slice(&env, &[2u8; 32]),
+    };
+    let v2 = client.rotate_key(&grace, &enc_key2, &empty, &false, &empty, &false);
+    assert_eq!(v2, 2);
+
+    // Verify current version is v2
+    assert_eq!(client.get_current_version(&grace), 2);
+    
+    // Verify old version v1 is now revoked
+    let bundle_v1_after = client.get_key_bundle(&grace, &v1).unwrap();
+    assert_eq!(bundle_v1_after.revoked, true);
+    
+    // Verify new version v2 is not revoked
+    let bundle_v2 = client.get_key_bundle(&grace, &v2).unwrap();
+    assert_eq!(bundle_v2.revoked, false);
 }
