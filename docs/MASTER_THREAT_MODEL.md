@@ -650,3 +650,16 @@ The security of the VitaStellar medical records system is foundational to its mi
 **Distribution**: Security Team, Engineering Leadership, Governance Participants  
 **Review Cycle**: Quarterly or after significant system changes  
 **Next Review Date**: 2026-07-25
+
+```
+loc-manifest:
+  audit_forensics: 790
+  crypto_registry: 1120
+  emr_integration: 2141
+  governor: 451
+  homomorphic_registry: 1149
+  identity_registry: 3601
+  medical_record_backup: 1566
+  mpc_manager: 1133
+  zk_verifier: 490
+```
