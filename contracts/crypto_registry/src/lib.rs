@@ -59,7 +59,7 @@ pub enum KeyAlgorithm {
     Custom(u32),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 #[contracttype]
 pub struct PublicKey {
     pub algorithm: KeyAlgorithm,
@@ -67,7 +67,7 @@ pub struct PublicKey {
     pub key: Bytes,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 #[contracttype]
 pub struct KeyBundle {
     /// Monotonic version per account.
@@ -161,6 +161,26 @@ impl CryptoRegistry {
         has_signing_key: bool,
     ) -> Result<u32, Error> {
         owner.require_auth();
+        Self::store_key_bundle(
+            env,
+            owner,
+            encryption_key,
+            pq_encryption_key,
+            has_pq_encryption_key,
+            signing_key,
+            has_signing_key,
+        )
+    }
+
+    fn store_key_bundle(
+        env: Env,
+        owner: Address,
+        encryption_key: PublicKey,
+        pq_encryption_key: PublicKey,
+        has_pq_encryption_key: bool,
+        signing_key: PublicKey,
+        has_signing_key: bool,
+    ) -> Result<u32, Error> {
         Self::require_initialized(&env)?;
 
         Self::validate_public_key(&encryption_key)?;
@@ -257,7 +277,11 @@ impl CryptoRegistry {
 
     pub fn get_current_key_bundle(env: Env, owner: Address) -> Result<Option<KeyBundle>, Error> {
         Self::require_initialized(&env)?;
-        let v: u32 = Self::try_get_current_version_value(&env, &owner)?;
+        let v: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::CurrentVersion(owner.clone()))
+            .unwrap_or(0);
         if v == 0 {
             return Ok(None);
         }
@@ -288,15 +312,12 @@ impl CryptoRegistry {
         }
     }
 
-    fn try_get_current_version_value(env: &Env, owner: &Address) -> Result<u32, Error> {
-        env.storage()
-            .persistent()
-            .get(&DataKey::CurrentVersion(owner.clone()))
-            .ok_or(Error::KeyNotFound)
-    }
-
     fn next_version_or_default(env: &Env, owner: &Address) -> u32 {
-        match env.storage().persistent().get::<DataKey, u32>(&DataKey::CurrentVersion(owner.clone())) {
+        match env
+            .storage()
+            .persistent()
+            .get::<DataKey, u32>(&DataKey::CurrentVersion(owner.clone()))
+        {
             Some(current) => current.saturating_add(1),
             None => 1,
         }
@@ -459,8 +480,8 @@ impl CryptoRegistry {
             }
         }
 
-        // Register the new key bundle
-        let new_version = Self::register_key_bundle(
+        // Store the new key bundle (without requiring auth again)
+        let new_version = Self::store_key_bundle(
             env.clone(),
             owner.clone(),
             new_encryption_key,

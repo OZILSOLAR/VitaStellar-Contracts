@@ -154,10 +154,10 @@ fn test_get_current_version_for_unregistered_owner() {
     client.initialize(&admin);
 
     let bob = soroban_sdk::Address::generate(&env);
-    
-    // bob has never registered a key bundle
-    let result = client.try_get_current_version(&bob);
-    assert_eq!(result, Err(Ok(Error::KeyNotFound)));
+
+    // bob has never registered a key bundle, should return 0 via unwrap_or default
+    let result = client.get_current_version(&bob);
+    assert_eq!(result, 0);
 }
 
 #[test]
@@ -170,10 +170,10 @@ fn test_get_current_key_bundle_missing_entry() {
     client.initialize(&admin);
 
     let charlie = soroban_sdk::Address::generate(&env);
-    
-    // charlie has never registered a key bundle
-    let result = client.try_get_current_key_bundle(&charlie);
-    assert_eq!(result, Err(Ok(Error::KeyNotFound)));
+
+    // charlie has never registered a key bundle, get_current_key_bundle returns None
+    let result = client.get_current_key_bundle(&charlie);
+    assert_eq!(result, None);
 }
 
 #[test]
@@ -186,8 +186,8 @@ fn test_get_all_versions_for_new_owner() {
     client.initialize(&admin);
 
     let dave = soroban_sdk::Address::generate(&env);
-    
-    // dave has never registered a key bundle
+
+    // dave has never registered a key bundle, should error with KeyNotFound
     let result = client.try_get_all_key_versions(&dave);
     assert_eq!(result, Err(Ok(Error::KeyNotFound)));
 }
@@ -226,9 +226,9 @@ fn test_get_all_versions_for_registered_owner() {
 
     let versions = client.get_all_key_versions(&eve);
     assert_eq!(versions.len(), 3);
-    assert_eq!(versions.get(0), 1);
-    assert_eq!(versions.get(1), 2);
-    assert_eq!(versions.get(2), 3);
+    assert_eq!(versions.get(0), Some(1));
+    assert_eq!(versions.get(1), Some(2));
+    assert_eq!(versions.get(2), Some(3));
 }
 
 #[test]
@@ -250,7 +250,7 @@ fn test_rotate_key_missing_current_version() {
         key: Bytes::new(&env),
     };
 
-    // frank has never registered a key bundle, so rotate_key should fail
+    // frank has never registered a key bundle, so rotate_key should fail with KeyNotFound
     let result = client.try_rotate_key(&frank, &enc_key, &empty, &false, &empty, &false);
     assert_eq!(result, Err(Ok(Error::KeyNotFound)));
 }
@@ -277,10 +277,10 @@ fn test_rotate_key_successful() {
     // Register initial key
     let v1 = client.register_key_bundle(&grace, &enc_key, &empty, &false, &empty, &false);
     assert_eq!(v1, 1);
-    
+
     // Verify v1 is not revoked
     let bundle_v1 = client.get_key_bundle(&grace, &v1).unwrap();
-    assert_eq!(bundle_v1.revoked, false);
+    assert!(!bundle_v1.revoked);
 
     // Rotate to new key
     let enc_key2 = PublicKey {
@@ -292,12 +292,12 @@ fn test_rotate_key_successful() {
 
     // Verify current version is v2
     assert_eq!(client.get_current_version(&grace), 2);
-    
+
     // Verify old version v1 is now revoked
     let bundle_v1_after = client.get_key_bundle(&grace, &v1).unwrap();
-    assert_eq!(bundle_v1_after.revoked, true);
-    
+    assert!(bundle_v1_after.revoked);
+
     // Verify new version v2 is not revoked
     let bundle_v2 = client.get_key_bundle(&grace, &v2).unwrap();
-    assert_eq!(bundle_v2.revoked, false);
+    assert!(!bundle_v2.revoked);
 }
