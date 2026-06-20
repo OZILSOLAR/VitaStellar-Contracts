@@ -78,6 +78,7 @@
 | 2 | AlreadyInitialized | Contract has already been initialized. |
 | 3 | Unauthorized | Caller is not authorized to perform this action. |
 | 4 | InputTooLong | A string or bytes input exceeded the maximum allowed length. |
+| 5 | ReentrantCall | Raised when `reentrancy::enter` returns `false` because the lock is already held — i.e. a guarded function was re-entered mid-call. |
 
 ### contract_usage_analytics
 
@@ -251,7 +252,7 @@
 | 205 | InvalidAmount | Generated from contract source |
 | 260 | InvalidFeeBps | Generated from contract source |
 | 380 | FeeNotSet | Generated from contract source |
-| 381 | ReentrancyGuard | Generated from contract source |
+| 381 | ReentrancyRejected | Generated from contract source |
 | 382 | InvalidStateTransition | Generated from contract source |
 | 480 | EscrowExists | Generated from contract source |
 | 481 | EscrowNotFound | Generated from contract source |
@@ -754,6 +755,7 @@
 | 372 | NotQueued | Generated from contract source |
 | 375 | AlreadyQueued | Generated from contract source |
 | 376 | NotReady | Generated from contract source |
+| 377 | ReentrancyRejected | Generated from contract source |
 | 500 | InsufficientFunds | Generated from contract source |
 | 502 | StorageFull | Generated from contract source |
 | 702 | CrossChainTimeout | Generated from contract source |
