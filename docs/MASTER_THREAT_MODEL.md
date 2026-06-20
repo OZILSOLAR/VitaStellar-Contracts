@@ -78,7 +78,7 @@ The VitaStellar deployment is a graph of focused contracts rather than one monol
    - Manages public key infrastructure
    - Supports classical and post-quantum algorithms
    - Key versioning and rotation
-   - ~935 lines of Rust code
+   - ~1114 lines of Rust code
 
 4. **Governor** (`contracts/governor/`)
    - On-chain governance for upgrades
