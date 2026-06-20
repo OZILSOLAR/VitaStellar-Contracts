@@ -33,8 +33,8 @@ fn key_bundle_registration_and_rotation() {
     assert_eq!(v1, 1);
 
     let current = client.get_current_key_bundle(&alice);
-    assert_eq!(current.as_ref().map(|b| b.version), Some(1));
-    assert_eq!(current.as_ref().map(|b| b.revoked), Some(false));
+    assert_eq!(current.version, 1);
+    assert_eq!(current.revoked, false);
     assert_eq!(client.get_current_version(&alice), 1);
 
     // Rotate
@@ -104,7 +104,7 @@ fn post_quantum_key_registration() {
     let v1 = client.register_key_bundle(&alice, &enc_key, &kyber_key, &true, &dilithium_key, &true);
     assert_eq!(v1, 1);
 
-    let current = client.get_current_key_bundle(&alice).unwrap();
+    let current = client.get_current_key_bundle(&alice);
     assert_eq!(current.pq_encryption_key.algorithm, KeyAlgorithm::Kyber768);
     assert_eq!(current.signing_key.algorithm, KeyAlgorithm::Dilithium3);
 }
@@ -171,9 +171,9 @@ fn test_get_current_key_bundle_missing_entry() {
 
     let charlie = soroban_sdk::Address::generate(&env);
 
-    // charlie has never registered a key bundle, get_current_key_bundle returns None
-    let result = client.get_current_key_bundle(&charlie);
-    assert_eq!(result, None);
+    // charlie has never registered a key bundle, get_current_key_bundle returns KeyNotFound
+    let result = client.try_get_current_key_bundle(&charlie);
+    assert_eq!(result, Err(Ok(Error::KeyNotFound)));
 }
 
 #[test]
