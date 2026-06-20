@@ -275,17 +275,14 @@ impl CryptoRegistry {
             .unwrap_or(0))
     }
 
-    pub fn get_current_key_bundle(env: Env, owner: Address) -> Result<Option<KeyBundle>, Error> {
+    pub fn get_current_key_bundle(env: Env, owner: Address) -> Result<KeyBundle, Error> {
         Self::require_initialized(&env)?;
-        let v: u32 = env
+        let v = Self::try_get_current_version_value(&env, &owner)?;
+        Ok(env
             .storage()
             .persistent()
-            .get(&DataKey::CurrentVersion(owner.clone()))
-            .unwrap_or(0);
-        if v == 0 {
-            return Ok(None);
-        }
-        Ok(env.storage().persistent().get(&DataKey::Bundle(owner, v)))
+            .get(&DataKey::Bundle(owner, v))
+            .ok_or(Error::KeyNotFound)?)
     }
 
     pub fn get_key_bundle(
@@ -321,6 +318,13 @@ impl CryptoRegistry {
             Some(current) => current.saturating_add(1),
             None => 1,
         }
+    }
+
+    fn try_get_current_version_value(env: &Env, owner: &Address) -> Result<u32, Error> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::CurrentVersion(owner.clone()))
+            .ok_or(Error::KeyNotFound)
     }
 
     fn validate_public_key(key: &PublicKey) -> Result<(), Error> {
@@ -460,24 +464,18 @@ impl CryptoRegistry {
         owner.require_auth();
         Self::require_initialized(&env)?;
 
-        // Get the current version before rotation
-        let old_version: u32 = env
-            .storage()
-            .persistent()
-            .get(&DataKey::CurrentVersion(owner.clone()))
-            .ok_or(Error::KeyNotFound)?;
+        // Get the current version before rotation (error if not found)
+        let old_version = Self::try_get_current_version_value(&env, &owner)?;
 
         // Revoke old key bundle if it exists
-        if old_version > 0 {
-            let old_key = DataKey::Bundle(owner.clone(), old_version);
-            if let Some(mut old_bundle) = env
-                .storage()
-                .persistent()
-                .get::<DataKey, KeyBundle>(&old_key)
-            {
-                old_bundle.revoked = true;
-                env.storage().persistent().set(&old_key, &old_bundle);
-            }
+        let old_key = DataKey::Bundle(owner.clone(), old_version);
+        if let Some(mut old_bundle) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, KeyBundle>(&old_key)
+        {
+            old_bundle.revoked = true;
+            env.storage().persistent().set(&old_key, &old_bundle);
         }
 
         // Store the new key bundle (without requiring auth again)
@@ -503,11 +501,7 @@ impl CryptoRegistry {
     /// Get all key bundle versions for an owner (including revoked ones).
     pub fn get_all_key_versions(env: Env, owner: Address) -> Result<Vec<u32>, Error> {
         Self::require_initialized(&env)?;
-        let current: u32 = env
-            .storage()
-            .persistent()
-            .get(&DataKey::CurrentVersion(owner.clone()))
-            .ok_or(Error::KeyNotFound)?;
+        let current = Self::try_get_current_version_value(&env, &owner)?;
 
         let mut versions = Vec::new(&env);
         for v in 1..=current {
