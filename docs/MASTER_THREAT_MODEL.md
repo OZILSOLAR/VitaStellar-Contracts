@@ -654,7 +654,7 @@ The security of the VitaStellar medical records system is foundational to its mi
 ```
 loc-manifest:
   audit_forensics: 790
-  crypto_registry: 1120
+  crypto_registry: 1114
   emr_integration: 2141
   governor: 451
   homomorphic_registry: 1149
